@@ -11,6 +11,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "axios": "^1.6.0" // Ensure axios is listed here
+    "axios": "^1.6.0"
   }
 }
