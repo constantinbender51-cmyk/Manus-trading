@@ -3,9 +3,17 @@ const axios = require('axios');
 
 // --- Configuration ---
 // Replace with your actual API keys and secrets
-const KRAKEN_API_KEY = 'YOUR_KRAKEN_API_KEY';
-const KRAKEN_API_SECRET = 'YOUR_KRAKEN_API_SECRET';
-const DEEPSEEK_API_KEY = 'YOUR_DEEPSEEK_API_KEY';
+// --- Configuration ---
+// Load API keys from environment variables for security
+const KRAKEN_API_KEY = process.env.KRAKEN_API_KEY;
+const KRAKEN_API_SECRET = process.env.KRAKEN_API_SECRET;
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+
+// Add a check to ensure the bot doesn't start without its keys
+if (!KRAKEN_API_KEY || !KRAKEN_API_SECRET || !DEEPSEEK_API_KEY) {
+    console.error('FATAL ERROR: One or more API keys are missing from environment variables.');
+    process.exit(1); // Exit the process if keys are not found
+}
 
 const KRAKEN_BASE_URL = 'https://futures.kraken.com';
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
