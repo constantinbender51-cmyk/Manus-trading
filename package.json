@@ -1,0 +1,16 @@
+{
+  "name": "trading-bot",
+  "version": "1.0.0",
+  "description": "A trading bot using Kraken and Deepseek APIs.",
+  "main": "tradingBot.js",
+  "scripts": {
+    "start": "node tradingBot.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.0" // Ensure axios is listed here
+  }
+}
