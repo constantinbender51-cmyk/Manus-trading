@@ -256,7 +256,7 @@ async function tradingLoop() {
         ]);
 console.log(marketData);
 console.log(accountData);
-console.log(open positions
+console.log(openPositions);
         // Check if a position is already open for the target symbol.
         const position = openPositions?.openPositions?.find(p => p.symbol === FUTURES_SYMBOL);
         if (position) {
