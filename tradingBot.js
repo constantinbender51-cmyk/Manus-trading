@@ -356,41 +356,48 @@ async async function analyzeWithDeepseek(candles, indicators, accountContext) {
 // =====================================================================================
 // SECTION 4: MAIN TRADING LOGIC
 // =====================================================================================
-
 async function tradingLoop() {
-    console.log(`\n--- Starting New Trading Cycle | ${new Date().toISOString()} ---`);
+    console.log(`\n--- Starting New Strategic Trading Cycle | ${new Date().toISOString()} ---`);
     try {
-        // 1. READ NOTES from the previous cycle.
-        const previousNotes = await readNotes();
-
-        // Fetch all required data in parallel.
-        const [marketData, accountData, openPositions] = await Promise.all([
+        // 1. Fetch all data (market, account, open positions, AND open orders)
+        const [marketData, accountData, openPositions, openOrders] = await Promise.all([
             fetchMarketData(),
             getAccountData(),
-            getOpenPositions()
+            getOpenPositions(),
+            getOpenOrders() // We need a new function for this!
         ]);
 
         const position = openPositions?.openPositions?.find(p => p.symbol === FUTURES_SYMBOL);
-        const hasOpenPosition = !!position;
+        const accountContext = {
+            // ... build the full context object, including the open stop-loss order details
+        };
 
-        // If there's no open position, but the notes say we just had one, it means our last trade just closed.
-        // We can now determine if it was a win or a loss.
-        if (!hasOpenPosition && previousNotes.lastTrade.action !== "none") {
-            console.log("Detected a recently closed trade. Analyzing result...");
-            // This is a simplified PNL check. A real implementation would use the fills/history endpoint.
-            // For now, we'll just mark it as closed.
-            previousNotes.lastTrade.result = "Closed"; // In a future step, we can calculate PNL here.
-            previousNotes.lastTrade.action = "none"; // Reset for the next trade.
+        // 2. Get the strategic action plan from the AI
+        const plan = await analyzeWithDeepseek(marketData.candles, indicators, accountContext);
+        console.log(`AI Action Plan: ${plan.action}. Reason: ${plan.reason}`);
+
+        // 3. Use a switch statement to dispatch the action
+        switch (plan.action) {
+            case "ENTER_LONG":
+            case "ENTER_SHORT":
+                await handleNewPosition(plan, accountContext);
+                break;
+
+            case "ADJUST_SL":
+                await handleStopLossAdjustment(plan, accountContext);
+                break;
+
+            case "EXIT_POSITION":
+                await handlePositionExit(plan, accountContext);
+                break;
+
+            case "HOLD":
+            default:
+                console.log("Action: Holding as per AI recommendation.");
+                break;
         }
 
-        // Prepare data for AI analysis, now including the previous notes.
-        const availableMargin = parseFloat(accountData.accounts.flex?.availableMargin || 0);
-        const indicators = calculateIndicators(marketData.candles);
-        const accountContext = { hasOpenPosition, availableMargin, previousNotes };
-
-        // Get the trading recommendation from the AI.
-        const recommendation = await analyzeWithDeepseek(marketData.candles, indicators, accountContext);
-
+        // 4. Update and write notes for the next cycle
         let newNotes = { ...previousNotes }; // Start with old notes and update them.
 
         // Act on the AI's recommendation.
