@@ -436,6 +436,29 @@ async function tradingLoop() {
 // =====================================================================================
 // SECTION 5: BOT INITIALIZATION
 // =====================================================================================
+/**
+ * A temporary function to test the cancelOrder functionality with a specific ID.
+ */
+async function runCancelTest() {
+    console.log("--- INITIATING CANCEL ORDER TEST ---");
+    
+    // The specific order ID you want to cancel.
+    const orderIdToCancel = '9f947155-48dc-4ad0-9636-8fa234785a44';
+    
+    // IMPORTANT: Make sure live trading is enabled for this test.
+    if (!IS_LIVE_TRADING_ENABLED) {
+        console.error("TEST ABORTED: IS_LIVE_TRADING_ENABLED must be set to 'true' to run this test.");
+        return;
+    }
+
+    const result = await cancelOrder(orderIdToCancel);
+
+    if (result && result.cancelStatus.status === 'cancelled') {
+        console.log("--- TEST SUCCESSFUL: Order was cancelled successfully. ---");
+    } else {
+        console.log("--- TEST FAILED: Could not cancel the order. Check logs for details. ---");
+    }
+}
 async function runBot() {
     try {
         await tradingLoop();
@@ -449,8 +472,7 @@ async function runBot() {
 
 function main() {
     console.log("=====================================================");
-    console.log(" Manus AI Trading Bot Initializing...");
-    console.log(` Trading Symbol: ${FUTURES_SYMBOL}`);
+    console.log(" Manus AI Trading Bot Initializing for a CANCEL TEST...");
     console.log(` Live Trading Enabled: ${IS_LIVE_TRADING_ENABLED}`);
     console.log("=====================================================");
 
@@ -459,7 +481,10 @@ function main() {
         process.exit(1);
     }
 
-    runBot();
+    // --- TEMPORARILY CHANGE THIS LINE ---
+    // Instead of starting the main loop, we run our specific test.
+    runCancelTest(); 
+    // runBot(); // <-- Comment out the main loop for now.
 }
 
 // --- Start the Bot ---
