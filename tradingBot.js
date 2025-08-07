@@ -54,7 +54,7 @@ const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
 
 const IS_LIVE_TRADING_ENABLED = false;
 const FUTURES_SYMBOL = 'pf_xbtusd';
-const SPOT_PAIR_SYMBOL = 'XBT/USD';
+const SPOT_PAIR_SYMBOL = 'BTC/USD';
 const CANDLE_INTERVAL = 240;
 const TRADE_INTERVAL_MS = CANDLE_INTERVAL * 60 * 1000;
 
