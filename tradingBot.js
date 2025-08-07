@@ -283,31 +283,40 @@ function calculateIndicators(candles) {
     };
 }
 
-async function analyzeWithDeepseek(candles, indicators, accountContext) {
-    console.log('Sending data with memory to Deepseek AI...');
+async async function analyzeWithDeepseek(candles, indicators, accountContext) {
+    console.log('Sending advanced context to Deepseek AI for strategic analysis...');
+
     const prompt = `
-        You are a concise trading analysis AI for BTC/USD. Based on the data below, provide a recommendation.
-        Rules:
-        1. Your entire response MUST be a single, valid JSON object with "action" and "reason" keys.
-        2. "action" must be exactly "buy", "sell", or "hold".
-        3. If a position is already open, your default recommendation is "hold".
+        You are a sophisticated trading strategy AI for BTC/USD. Your task is to return a precise action plan as a JSON object.
+
+        --- Possible Actions & Required Parameters ---
+        1.  { "action": "HOLD", "reason": "..." }
+        2.  { "action": "ENTER_LONG", "orderType": "mkt" | "lmt", "price": <price_for_lmt_order>, "reason": "..." }
+        3.  { "action": "ENTER_SHORT", "orderType": "mkt" | "lmt", "price": <price_for_lmt_order>, "reason": "..." }
+        4.  { "action": "EXIT_POSITION", "reason": "..." } // To close the current position
+        5.  { "action": "ADJUST_SL", "price": <new_stop_loss_price>, "reason": "..." } // To move the stop-loss
+
+        --- Rules ---
+        - Your entire response MUST be a single, valid JSON object matching one of the schemas above.
+        - If entering with a limit order ("lmt"), you MUST provide a "price". For market orders ("mkt"), "price" is not needed.
+        - You can only recommend "ADJUST_SL" or "EXIT_POSITION" if a position is already open.
+        - If no clear action is warranted, default to { "action": "HOLD" }.
 
         --- Bot's Memory (Notes from last cycle) ---
         ${JSON.stringify(accountContext.previousNotes, null, 2)}
-        --- End of Memory ---
 
-        Current Account Context:
+        --- Current Account & Position Context ---
         - Has Open Position: ${accountContext.hasOpenPosition}
+        - Position Details: ${JSON.stringify(accountContext.position, null, 2)}
+        - Open Orders (e.g., current stop-loss): ${JSON.stringify(accountContext.openOrders, null, 2)}
         - Available Margin (USD): ${accountContext.availableMargin?.toFixed(2)}
 
-        Current Market Data:
+        --- Current Market Data ---
         - Current Price: ${indicators.lastPrice?.toFixed(2)}
         - 14-period RSI: ${indicators.lastRSI?.toFixed(2)}
         - 50-period SMA: ${indicators.lastSMA50?.toFixed(2)}
-
-        Recent 4-hour OHLC data:
-        ${JSON.stringify(candles.slice(-10), null, 2)}
-    `;
+        - Recent 4-hour OHLC data: ${JSON.stringify(candles.slice(-10), null, 2)}
+  `;
 
     // Inside the analyzeWithDeepseek function...
 
