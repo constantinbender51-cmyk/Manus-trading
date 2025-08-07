@@ -332,7 +332,45 @@ async function handleStopLossAdjustment(plan, context) {
         generalObservations: "AI recommended a SL adjustment, but the logic is not yet implemented."
     };
 }
+/**
+ * Cancels a specific open order by its ID.
+ * @param {string} orderId - The unique ID of the order to cancel.
+ * @returns {Promise<object>} A promise that resolves to the API response.
+ */
+async function cancelOrder(orderId) {
+    console.log(`Attempting to cancel order with ID: ${orderId}`);
+    if (!IS_LIVE_TRADING_ENABLED) {
+        console.log(`LIVE TRADING DISABLED. Cancel order for ${orderId} not sent.`);
+        // Return a simulated success response for testing logic flow.
+        return { cancelStatus: { status: 'cancelled' } };
+    }
 
+    const endpoint = '/derivatives/api/v3/cancelorder';
+    const nonce = createNonce();
+    
+    // The data must be a form-urlencoded string.
+    const data = `order_id=${orderId}`;
+    
+    const authent = signRequest(endpoint, nonce, data);
+    const headers = {
+        'Accept': 'application/json',
+        'APIKey': KRAKEN_API_KEY,
+        'Nonce': nonce,
+        'Authent': authent,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': data.length.toString()
+    };
+
+    try {
+        const response = await axios.post(KRAKEN_FUTURES_BASE_URL + endpoint, data, { headers });
+        console.log('Cancel order response:', response.data);
+        return response.data;
+    } catch (error) {
+        console.error(`Failed to cancel order ${orderId}:`, error.response?.data || error.message);
+        // Return a failure structure so the calling function knows it didn't work.
+        return { cancelStatus: { status: 'failed', reason: error.response?.data || error.message } };
+    }
+}
 // =====================================================================================
 // SECTION 4: MAIN TRADING LOGIC
 // =====================================================================================
