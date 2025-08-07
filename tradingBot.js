@@ -58,7 +58,7 @@ const IS_LIVE_TRADING_ENABLED = false; // IMPORTANT: Set to 'true' to allow real
 const FUTURES_SYMBOL = 'pf_xbtusd';  // The instrument to trade (linear USD-margined BTC perpetual).
 const SPOT_PAIR_SYMBOL = 'BTC/USD';   // The corresponding spot pair for fetching OHLC data.
 const CANDLE_INTERVAL = 240;          // Timeframe for candles in minutes (e.g., 240 for 4-hour).
-const TRADE_INTERVAL_MS = CANDLE_INTERVAL * 60 * 1000; // Bot execution frequency.
+const TRADE_INTERVAL_MS = 1000*30;//CANDLE_INTERVAL * 60 * 1000; // Bot execution frequency.
 
 // --- Risk Management Parameters ---
 const LEVERAGE = 10;                  // The leverage level set on your account (e.g., 10x).
@@ -249,14 +249,11 @@ async function tradingLoop() {
     console.log(`\n--- Starting New Trading Cycle | ${new Date().toISOString()} ---`);
     try {
         // Fetch all required data in parallel for efficiency.
-        //const [marketData, accountData, openPositions] = await Promise.all([
-        //    fetchMarketData(),
-        //    getAccountData(),
-        //    getOpenPositions()
-        //]);
-        const marketData = await fetchMarketData();
-        const accountData = await getAccountData();
-        const openPositions = await getOpenPositions();
+        const [marketData, accountData, openPositions] = await Promise.all([
+            fetchMarketData(),
+            getAccountData(),
+            getOpenPositions()
+        ]);        
         // Check if a position is already open for the target symbol.
         const position = openPositions?.openPositions?.find(p => p.symbol === FUTURES_SYMBOL);
         if (position) {
