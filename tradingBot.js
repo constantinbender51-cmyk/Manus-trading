@@ -52,7 +52,7 @@ const KRAKEN_FUTURES_BASE_URL = 'https://futures.kraken.com';
 const KRAKEN_SPOT_BASE_URL = 'https://api.kraken.com';
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
 
-const IS_LIVE_TRADING_ENABLED = true;
+const IS_LIVE_TRADING_ENABLED = false;
 const FUTURES_SYMBOL = 'pf_xbtusd';
 const SPOT_PAIR_SYMBOL = 'BTC/USD';
 const CANDLE_INTERVAL = 240;
@@ -371,6 +371,58 @@ async function cancelOrder(orderId) {
         return { cancelStatus: { status: 'failed', reason: error.response?.data || error.message } };
     }
 }
+/**
+ * Handles the logic for exiting the current open position.
+ * @param {object} plan - The strategic plan object from the AI.
+ * @param {object} context - The full account and market context.
+ * @returns {Promise<object>} A promise that resolves to the new notes object for this cycle.
+ */
+async function handlePositionExit(plan, context) {
+    console.log(`--- Handling Position Exit. Reason: ${plan.reason} ---`);
+
+    if (!context.hasOpenPosition) {
+        console.log("Aborting exit: No position is currently open.");
+        return context.previousNotes;
+    }
+
+    // --- Two-Step Exit Process ---
+    // 1. First, cancel the associated stop-loss order, if it exists.
+    if (context.openOrders && context.openOrders.length > 0) {
+        const stopLossId = context.openOrders[0].orderId;
+        console.log(`Found associated stop-loss order ${stopLossId} to cancel before exiting.`);
+        await cancelOrder(stopLossId);
+        // We proceed even if cancellation fails, as closing the position is the priority.
+    }
+
+    // 2. Place a market order opposite to the current position to close it.
+    const exitOrder = {
+        orderType: 'mkt',
+        symbol: FUTURES_SYMBOL,
+        side: context.position.side === 'buy' ? 'sell' : 'buy', // Opposite side to close
+        size: context.position.size, // Close the full size of the position
+    };
+    
+    const exitResponse = await executeOrder(exitOrder);
+
+    // 3. Update notes based on the outcome.
+    if (exitResponse && exitResponse.sendStatus.status === 'placed') {
+        console.log("Position exit order placed successfully.");
+        return {
+            lastTrade: {
+                ...context.previousNotes.lastTrade,
+                result: "Closed", // Mark the trade as closed
+                exitPrice: context.indicators.lastPrice // Record the approximate exit price
+            },
+            generalObservations: `Successfully exited position based on AI reason: ${plan.reason}`
+        };
+    } else {
+        console.log("Failed to place the position exit order.");
+        return {
+            ...context.previousNotes,
+            generalObservations: "Attempted to exit position, but the closing order failed."
+        };
+    }
+}
 // =====================================================================================
 // SECTION 4: MAIN TRADING LOGIC
 // =====================================================================================
@@ -483,8 +535,8 @@ function main() {
 
     // --- TEMPORARILY CHANGE THIS LINE ---
     // Instead of starting the main loop, we run our specific test.
-    runCancelTest(); 
-    // runBot(); // <-- Comment out the main loop for now.
+    //runCancelTest(); 
+    runBot(); // <-- Comment out the main loop for now.
 }
 
 // --- Start the Bot ---
