@@ -178,6 +178,26 @@ async function executeOrder(orderDetails) {
     console.log('Order execution response:', response.data);
     return response.data;
 }
+/**
+ * Fetches a list of all currently open (unfilled) orders, such as a stop-loss.
+ * @returns {Promise<object>} A promise that resolves to the open orders data.
+ */
+async function getOpenOrders() {
+    const endpoint = '/derivatives/api/v3/openorders';
+    const nonce = createNonce();
+    const authent = signRequest(endpoint, nonce, '');
+    const headers = { 'APIKey': KRAKEN_API_KEY, 'Nonce': nonce, 'Authent': authent, 'Content-Type': 'application/json' };
+    
+    try {
+        const response = await axios.get(KRAKEN_FUTURES_BASE_URL + endpoint, { headers });
+        console.log("Successfully fetched open orders.");
+        return response.data;
+    } catch (error) {
+        // It's not a fatal error if this fails, so we log and return an empty object.
+        console.error('Could not fetch open orders:', error.response?.data || error.message);
+        return { openOrders: [] }; // Return a default empty structure on failure
+    }
+}
 // =====================================================================================
 // SECTION: HELPER FUNCTIONS
 // =====================================================================================
@@ -359,17 +379,31 @@ async function analyzeWithDeepseek(candles, indicators, accountContext) {
 async function tradingLoop() {
     console.log(`\n--- Starting New Strategic Trading Cycle | ${new Date().toISOString()} ---`);
     try {
-        // 1. Fetch all data (market, account, open positions, AND open orders)
+        // Fetch all required data in parallel, now including open orders.
         const [marketData, accountData, openPositions, openOrders] = await Promise.all([
             fetchMarketData(),
             getAccountData(),
             getOpenPositions(),
-            getOpenOrders() // We need a new function for this!
+            getOpenOrders() // <-- Add the new function call here
         ]);
 
         const position = openPositions?.openPositions?.find(p => p.symbol === FUTURES_SYMBOL);
+        // Inside the tradingLoop, after the Promise.all...
+
+        const position = openPositions?.openPositions?.find(p => p.symbol === FUTURES_SYMBOL);
+        const hasOpenPosition = !!position;
+
+        // Find the currently open stop-loss order associated with our position.
+        const stopLossForPosition = openOrders?.openOrders?.find(o => o.symbol === FUTURES_SYMBOL && o.orderType === 'stp');
+
+        // Prepare the full context object for the AI.
+        const availableMargin = parseFloat(accountData.accounts.flex?.availableMargin || 0);
+        const indicators = calculateIndicators(marketData.candles);
         const accountContext = {
-            // ... build the full context object, including the open stop-loss order details
+            hasOpenPosition,
+            position, // Pass the full position object
+            openOrders: stopLossForPosition ? [stopLossForPosition] : [], // Pass the specific SL order
+            availableMargin
         };
 
         // 2. Get the strategic action plan from the AI
