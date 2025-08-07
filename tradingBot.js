@@ -309,15 +309,38 @@ async function analyzeWithDeepseek(candles, indicators, accountContext) {
         ${JSON.stringify(candles.slice(-10), null, 2)}
     `;
 
-    const response = await axios.post(DEEPSEEK_API_URL, {
-        model: 'deepseek-chat',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.5,
-        response_format: { type: "json_object" }
-    }, { headers: { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` } });
+    // Inside the analyzeWithDeepseek function...
 
-    console.log(`AI Recommendation: ${response.data.choices[0].message.content}`);
-    return JSON.parse(response.data.choices[0].message.content);
+    try {
+        const response = await axios.post(DEEPSEEK_API_URL, {
+            model: 'deepseek-chat',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.5,
+            response_format: { type: "json_object" }
+        }, { 
+            headers: { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
+            // --- THIS IS THE CRITICAL ADDITION ---
+            // Set a specific timeout for the request (e.g., 30 seconds).
+            // This prevents the connection from hanging indefinitely and tells
+            // our code to handle the error, rather than letting the platform kill the process.
+            timeout: 30000 // 30 seconds in milliseconds
+        });
+
+        console.log(`AI Recommendation: ${response.data.choices[0].message.content}`);
+        return JSON.parse(response.data.choices[0].message.content);
+
+    } catch (error) {
+        // Add more specific logging for different error types
+        if (error.code === 'ECONNABORTED') {
+            console.error('Error: Deepseek API call timed out after 30 seconds.');
+        } else if (error.response) {
+            console.error('Error from Deepseek API:', error.response.status, error.response.data);
+        } else {
+            console.error('Error calling Deepseek API:', error.message);
+        }
+        // Return a safe default action if the AI fails
+        return { action: 'hold', reason: 'AI analysis failed or timed out.' };
+    }
 }
 
 // =====================================================================================
