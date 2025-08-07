@@ -56,7 +56,7 @@ const IS_LIVE_TRADING_ENABLED = false; // IMPORTANT: Set to 'true' to allow real
 
 // --- Trading Strategy Parameters ---
 const FUTURES_SYMBOL = 'pf_xbtusd';  // The instrument to trade (linear USD-margined BTC perpetual).
-const SPOT_PAIR_SYMBOL = 'XBT/USD';   // The corresponding spot pair for fetching OHLC data.
+const SPOT_PAIR_SYMBOL = 'BTC/USD';   // The corresponding spot pair for fetching OHLC data.
 const CANDLE_INTERVAL = 240;          // Timeframe for candles in minutes (e.g., 240 for 4-hour).
 const TRADE_INTERVAL_MS = CANDLE_INTERVAL * 60 * 1000; // Bot execution frequency.
 
