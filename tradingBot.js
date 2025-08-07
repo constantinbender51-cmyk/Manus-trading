@@ -392,40 +392,52 @@ async function tradingLoop() {
 
         // 3. Consolidate all context for the AI.
         const position = openPositions?.openPositions?.find(p => p.symbol === FUTURES_SYMBOL);
-        const hasOpenPosition = !!position;
-
-        // Find the currently open stop-loss order associated with our position.
-        const stopLossForPosition = openOrders?.openOrders?.find(o => o.symbol === FUTURES_SYMBOL && o.orderType === 'stp');
-
-        const availableMargin = parseFloat(accountData.accounts.flex?.availableMargin || 0);
-        const indicators = calculateIndicators(marketData.candles);
-        
-        // This is the complete context object, now including the bot's memory.
+        // ... (the rest of the context building is the same) ...
         const accountContext = {
             hasOpenPosition,
             position,
             openOrders: stopLossForPosition ? [stopLossForPosition] : [],
             availableMargin,
-            previousNotes // <-- This is the corrected addition
+            previousNotes
         };
 
-        // 2. Get the strategic action plan from the AI
-        const plan = await analyzeWithDeepseek(marketData.candles, indicators, accountContext);
-        console.log(`AI Action Plan: ${plan.action}. Reason: ${plan.reason}`);
+        // =================================================================
+        // THIS IS THE CORRECTED SECTION
+        // =================================================================
 
-        // 3. Use a switch statement to dispatch the action
-        switch (plan.action) {
+        // 4. Get the strategic action plan from the AI.
+        const strategyPlan = await analyzeWithDeepseek(marketData.candles, indicators, accountContext);
+        
+        // A safety check to ensure the AI returned a valid plan.
+        if (!strategyPlan || !strategyPlan.action) {
+            console.log("Could not get a valid strategic plan from the AI. Holding.");
+            // We should still write notes to record this failure.
+            const notes = { ...previousNotes, generalObservations: "AI failed to return a valid plan." };
+            await writeNotes(notes);
+            return;
+        }
+
+        console.log(`AI Action Plan: ${strategyPlan.action}. Reason: ${strategyPlan.reason}`);
+
+        // 5. Use a switch statement to dispatch the action based on the defined plan.
+        switch (strategyPlan.action) {
             case "ENTER_LONG":
             case "ENTER_SHORT":
-                await handleNewPosition(plan, accountContext);
+                // We will build this function next.
+                // await handleNewPosition(strategyPlan, accountContext);
+                console.log("Action handler for new position not yet implemented.");
                 break;
 
             case "ADJUST_SL":
-                await handleStopLossAdjustment(plan, accountContext);
+                // We will build this function next.
+                // await handleStopLossAdjustment(strategyPlan, accountContext);
+                console.log("Action handler for SL adjustment not yet implemented.");
                 break;
 
             case "EXIT_POSITION":
-                await handlePositionExit(plan, accountContext);
+                // We will build this function next.
+                // await handlePositionExit(strategyPlan, accountContext);
+                console.log("Action handler for position exit not yet implemented.");
                 break;
 
             case "HOLD":
@@ -433,6 +445,17 @@ async function tradingLoop() {
                 console.log("Action: Holding as per AI recommendation.");
                 break;
         }
+
+        // 6. Update and write notes for the next cycle.
+        // This logic will be integrated into the handler functions.
+        // For now, we can just write a simple note.
+        const notes = { ...previousNotes, generalObservations: `AI recommended ${strategyPlan.action}.` };
+        await writeNotes(notes);
+
+    } catch (error) {
+        console.error('FATAL ERROR in trading loop:', error.message);
+    }
+}
 
         // 4. Update and write notes for the next cycle
         let newNotes = { ...previousNotes }; // Start with old notes and update them.
