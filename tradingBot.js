@@ -52,7 +52,7 @@ const KRAKEN_FUTURES_BASE_URL = 'https://futures.kraken.com';
 const KRAKEN_SPOT_BASE_URL = 'https://api.kraken.com';
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
 
-const IS_LIVE_TRADING_ENABLED = false;
+const IS_LIVE_TRADING_ENABLED = true;
 const FUTURES_SYMBOL = 'pf_xbtusd';
 const SPOT_PAIR_SYMBOL = 'BTC/USD';
 const CANDLE_INTERVAL = 240;
