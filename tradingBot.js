@@ -388,9 +388,6 @@ async function tradingLoop() {
         ]);
 
         const position = openPositions?.openPositions?.find(p => p.symbol === FUTURES_SYMBOL);
-        // Inside the tradingLoop, after the Promise.all...
-
-        const position = openPositions?.openPositions?.find(p => p.symbol === FUTURES_SYMBOL);
         const hasOpenPosition = !!position;
 
         // Find the currently open stop-loss order associated with our position.
