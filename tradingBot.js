@@ -224,6 +224,45 @@ async function writeNotes(notes) {
     }
 }
 
+/**
+ * Calculates the appropriate trade size in BTC based on risk management parameters.
+ * @param {number} availableMargin - The current available margin in USD.
+ * @param {number} currentPrice - The current price of the asset.
+ * @returns {number} The calculated trade size in BTC, rounded to 4 decimal places. Returns 0 if the trade is not viable.
+ */
+function calculateTradeSize(availableMargin, currentPrice) {
+    console.log("--- Calculating Trade Size ---");
+
+    // Step 1: Determine max position size based on leverage and risk.
+    const maxLeveragedPositionUSD = availableMargin * LEVERAGE * LEVERAGE_SAFETY_FACTOR;
+    const riskAmountUSD = availableMargin * (RISK_PER_TRADE_PERCENT / 100);
+    const riskDefinedPositionUSD = riskAmountUSD / (STOP_LOSS_PERCENT / 100);
+
+    // Step 2: Choose the smaller of the two to respect both leverage and risk limits.
+    let finalPositionUSD = Math.min(maxLeveragedPositionUSD, riskDefinedPositionUSD);
+    console.log(`Calculated Position Size (USD): $${finalPositionUSD.toFixed(2)}`);
+
+    // Step 3: Enforce the minimum trade size.
+    if (finalPositionUSD < MINIMUM_TRADE_USD) {
+        console.log(`Calculated size is below minimum. Bumping up to $${MINIMUM_TRADE_USD}.`);
+        finalPositionUSD = MINIMUM_TRADE_USD;
+    }
+
+    // Step 4: Final safety check against buying power.
+    if (finalPositionUSD > maxLeveragedPositionUSD) {
+        console.log(`Final position size of $${finalPositionUSD.toFixed(2)} exceeds max buying power of $${maxLeveragedPositionUSD.toFixed(2)}.`);
+        return 0; // Return 0 to indicate no trade.
+    }
+
+    console.log(`Final Position Size (USD): $${finalPositionUSD.toFixed(2)}`);
+
+    // Step 5: Convert USD position to BTC-denominated trade size.
+    const tradeSizeBTC = finalPositionUSD / currentPrice;
+    const roundedTradeSizeBTC = parseFloat(tradeSizeBTC.toFixed(4));
+
+    console.log(`Final Trade Size (BTC): ${roundedTradeSizeBTC}`);
+    return roundedTradeSizeBTC;
+}
 // =====================================================================================
 // SECTION 3: DATA PROCESSING & AI ANALYSIS
 // =====================================================================================
