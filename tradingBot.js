@@ -440,6 +440,69 @@ async function tradingLoop() {
                 console.log("Action handler for position exit not yet implemented.");
                 break;
 
+// =====================================================================================
+// SECTION 4: MAIN TRADING LOGIC (Syntactically Corrected)
+// =====================================================================================
+async function tradingLoop() {
+    console.log(`\n--- Starting New Strategic Trading Cycle | ${new Date().toISOString()} ---`);
+    try {
+        // 1. Read notes from the previous cycle.
+        const previousNotes = await readNotes();
+
+        // 2. Fetch all required data in parallel.
+        const [marketData, accountData, openPositions, openOrders] = await Promise.all([
+            fetchMarketData(),
+            getAccountData(),
+            getOpenPositions(),
+            getOpenOrders()
+        ]);
+
+        // 3. Consolidate all context for the AI.
+        const position = openPositions?.openPositions?.find(p => p.symbol === FUTURES_SYMBOL);
+        const hasOpenPosition = !!position;
+        const stopLossForPosition = openOrders?.openOrders?.find(o => o.symbol === FUTURES_SYMBOL && o.orderType === 'stp');
+        const availableMargin = parseFloat(accountData.accounts.flex?.availableMargin || 0);
+        const indicators = calculateIndicators(marketData.candles);
+        
+        const accountContext = {
+            hasOpenPosition,
+            position,
+            openOrders: stopLossForPosition ? [stopLossForPosition] : [],
+            availableMargin,
+            previousNotes
+        };
+
+        // 4. Get the strategic action plan from the AI.
+        const strategyPlan = await analyzeWithDeepseek(marketData.candles, indicators, accountContext);
+        
+        // Safety check for a valid plan from the AI.
+        if (!strategyPlan || !strategyPlan.action) {
+            console.log("Could not get a valid strategic plan from the AI. Holding.");
+            const notes = { ...previousNotes, generalObservations: "AI failed to return a valid plan." };
+            await writeNotes(notes);
+            return;
+        }
+
+        console.log(`AI Action Plan: ${strategyPlan.action}. Reason: ${strategyPlan.reason}`);
+
+        // 5. Use a switch statement to dispatch the action.
+        switch (strategyPlan.action) {
+            case "ENTER_LONG":
+            case "ENTER_SHORT":
+                // Placeholder for the handler function
+                console.log("Action handler for new position not yet implemented.");
+                break;
+
+            case "ADJUST_SL":
+                // Placeholder for the handler function
+                console.log("Action handler for SL adjustment not yet implemented.");
+                break;
+
+            case "EXIT_POSITION":
+                // Placeholder for the handler function
+                console.log("Action handler for position exit not yet implemented.");
+                break;
+
             case "HOLD":
             default:
                 console.log("Action: Holding as per AI recommendation.");
@@ -447,62 +510,18 @@ async function tradingLoop() {
         }
 
         // 6. Update and write notes for the next cycle.
-        // This logic will be integrated into the handler functions.
-        // For now, we can just write a simple note.
+        // This logic will eventually be moved into the individual handler functions.
         const notes = { ...previousNotes, generalObservations: `AI recommended ${strategyPlan.action}.` };
         await writeNotes(notes);
 
     } catch (error) {
         console.error('FATAL ERROR in trading loop:', error.message);
+        // We should still try to write a note about the error.
+        const errorNotes = { generalObservations: `The bot crashed with error: ${error.message}` };
+        await writeNotes(errorNotes);
     }
-}
+} // <-- This closing bracket for the try...catch is crucial.
 
-        // 4. Update and write notes for the next cycle
-        let newNotes = { ...previousNotes }; // Start with old notes and update them.
-
-        // Act on the AI's recommendation.
-        if (!hasOpenPosition && (recommendation.action === 'buy' || recommendation.action === 'sell')) {
-            const currentPrice = indicators.lastPrice;
-            
-            // --- Trade Size Calculation (remains the same) ---
-            const tradeSizeBTC = calculateTradeSize(availableMargin, currentPrice);
-            if (tradeSizeBTC <= 0) {
-                console.log(`Action: Holding. Calculated trade size is zero or negative.`);
-                await writeNotes(newNotes); // Write notes even if we don't trade.
-                return;
-            }
-
-            // --- Execute Trade ---
-            const entryOrder = { /* ... */ };
-            const entryResponse = await executeOrder(entryOrder);
-
-            if (entryResponse && entryResponse.sendStatus.status === 'placed') {
-                // --- UPDATE NOTES AFTER SUCCESSFUL ENTRY ---
-                newNotes.lastTrade = {
-                    action: recommendation.action,
-                    result: "Open",
-                    reason: recommendation.reason,
-                    entryPrice: currentPrice,
-                    exitPrice: 0
-                };
-                newNotes.generalObservations = `Entered a ${recommendation.action} position based on: ${recommendation.reason}`;
-
-                // Place protective stop-loss...
-                const stopLossOrder = { /* ... */ };
-                await executeOrder(stopLossOrder);
-            }
-        } else {
-            console.log('Action: Holding as per AI recommendation.');
-            newNotes.generalObservations = "Market conditions did not warrant a new trade.";
-        }
-
-        // 4. WRITE a new notes file for the next cycle.
-        await writeNotes(newNotes);
-
-    } catch (error) {
-        console.error('FATAL ERROR in trading loop:', error.message);
-    }
-}
 
 // =====================================================================================
 // SECTION 5: BOT INITIALIZATION (Robust Loop)
