@@ -249,11 +249,14 @@ async function tradingLoop() {
     console.log(`\n--- Starting New Trading Cycle | ${new Date().toISOString()} ---`);
     try {
         // Fetch all required data in parallel for efficiency.
-        const [marketData, accountData, openPositions] = await Promise.all([
-            fetchMarketData(),
-            getAccountData(),
-            getOpenPositions()
-        ]);
+        //const [marketData, accountData, openPositions] = await Promise.all([
+        //    fetchMarketData(),
+        //    getAccountData(),
+        //    getOpenPositions()
+        //]);
+        const marketData = await fetchMarketData();
+        const accountData = await getAccountData();
+        const openPositions = await getOpenPositions();
 console.log(accountData);
 console.log(openPositions);
         // Check if a position is already open for the target symbol.
