@@ -254,7 +254,6 @@ async function tradingLoop() {
             getAccountData(),
             getOpenPositions()
         ]);
-console.log(marketData);
 console.log(accountData);
 console.log(openPositions);
         // Check if a position is already open for the target symbol.
