@@ -200,6 +200,138 @@ async function analyzeWithDeepseek(candles, indicators, accountContext) {
     }, { headers: { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` } });
     return JSON.parse(response.data.choices[0].message.content);
 }
+// =====================================================================================
+// SECTION 4: ACTION HANDLERS
+// =====================================================================================
+
+/**
+ * Handles the logic for entering a new long or short position.
+ * @param {object} plan - The strategic plan object from the AI.
+ * @param {object} context - The full account and market context.
+ * @returns {Promise<object>} A promise that resolves to the new notes object for this cycle.
+ */
+async function handleNewPosition(plan, context) {
+    console.log(`--- Handling New Position: ${plan.action} ---`);
+
+    // If a position already exists, do nothing. This is a safety check.
+    if (context.hasOpenPosition) {
+        console.log("Aborting entry: A position already exists.");
+        return context.previousNotes; // Return original notes, no changes.
+    }
+
+    const currentPrice = context.indicators.lastPrice;
+
+    // Calculate the trade size. This uses the helper function we already have.
+    const tradeSizeBTC = calculateTradeSize(context.availableMargin, currentPrice);
+    if (tradeSizeBTC <= 0) {
+        console.log(`Action: Holding. Trade size calculation resulted in zero or less.`);
+        return { ...context.previousNotes, generalObservations: "Trade size was zero, aborted entry." };
+    }
+
+    // --- Execute Two-Step Trade ---
+    // 1. Place the ENTRY order.
+    const entryOrder = {
+        orderType: plan.orderType, // Use the order type from the AI plan ('mkt' or 'lmt')
+        symbol: FUTURES_SYMBOL,
+        side: plan.action === 'ENTER_LONG' ? 'buy' : 'sell',
+        size: tradeSizeBTC,
+        limitPrice: plan.orderType === 'lmt' ? plan.price : null // Add limit price if it's a limit order
+    };
+    const entryResponse = await executeOrder(entryOrder);
+
+    // 2. If entry is successful, place the PROTECTIVE stop-loss.
+    if (entryResponse && entryResponse.sendStatus.status === 'placed') {
+        console.log("Entry order placed. Now placing protective stop-loss order.");
+        const stopLossPrice = (plan.action === 'ENTER_LONG')
+            ? currentPrice * (1 - STOP_LOSS_PERCENT / 100)
+            : currentPrice * (1 + STOP_LOSS_PERCENT / 100);
+
+        const roundedStopPrice = Math.round(stopLossPrice);
+        const roundedLimitPrice = (plan.action === 'ENTER_LONG') ? roundedStopPrice - 1 : roundedStopPrice + 1;
+
+        const stopLossOrder = {
+            orderType: 'stp',
+            symbol: FUTURES_SYMBOL,
+            side: (plan.action === 'ENTER_LONG') ? 'sell' : 'buy',
+            size: tradeSizeBTC,
+            limitPrice: roundedLimitPrice,
+            stopPrice: roundedStopPrice,
+        };
+        await executeOrder(stopLossOrder);
+
+        // --- Create New Notes for a Successful Entry ---
+        const newNotes = {
+            lastTrade: {
+                action: plan.action,
+                result: "Open",
+                reason: plan.reason,
+                entryPrice: currentPrice,
+                exitPrice: 0
+            },
+            generalObservations: `Successfully entered a ${plan.action} position.`
+        };
+        return newNotes;
+    } else {
+        // If the entry order failed, record it in the notes.
+        console.log("Entry order failed to place.");
+        return {
+            ...context.previousNotes,
+            generalObservations: `Attempted to ${plan.action} but the order failed.`
+        };
+    }
+}
+/**
+ * Handles the logic for exiting the current open position.
+ * @param {object} plan - The strategic plan object from the AI.
+ * @param {object} context - The full account and market context.
+ * @returns {Promise<object>} A promise that resolves to the new notes object for this cycle.
+ */
+async function handlePositionExit(plan, context) {
+    console.log(`--- Handling Position Exit ---`);
+
+    if (!context.hasOpenPosition) {
+        console.log("Aborting exit: No position is currently open.");
+        return context.previousNotes;
+    }
+
+    console.log("!!! EXIT LOGIC NOT YET IMPLEMENTED !!!");
+    // TODO:
+    // 1. Get the open stop-loss order ID from context.openOrders[0].order_id.
+    // 2. Call a new `cancelOrder(orderId)` function.
+    // 3. Place a market order opposite to the current position's side (context.position.side).
+    // 4. Update notes with the result ("Closed") and exit price.
+
+    return {
+        ...context.previousNotes,
+        generalObservations: "AI recommended an exit, but the logic is not yet implemented."
+    };
+}
+/**
+ * Handles the logic for adjusting the stop-loss of an existing position.
+ * @param {object} plan - The strategic plan object from the AI.
+ * @param {object} context - The full account and market context.
+ * @returns {Promise<object>} A promise that resolves to the new notes object for this cycle.
+ */
+async function handleStopLossAdjustment(plan, context) {
+    console.log(`--- Handling Stop-Loss Adjustment ---`);
+
+    if (!context.hasOpenPosition || !context.openOrders || context.openOrders.length === 0) {
+        console.log("Aborting SL adjustment: No position or open stop-loss order found.");
+        return context.previousNotes;
+    }
+
+    console.log("!!! SL ADJUSTMENT LOGIC NOT YET IMPLEMENTED !!!");
+    // TODO:
+    // 1. Get the open stop-loss order ID from context.openOrders[0].order_id.
+    // 2. Call a new `cancelOrder(orderId)` function.
+    // 3. Place a NEW 'stp' order using the price from plan.price.
+    // 4. Update notes to reflect the new stop-loss level.
+
+    return {
+        ...context.previousNotes,
+        generalObservations: "AI recommended a SL adjustment, but the logic is not yet implemented."
+    };
+}
 
 // =====================================================================================
 // SECTION 4: MAIN TRADING LOGIC
@@ -231,25 +363,30 @@ async function tradingLoop() {
 
         console.log(`AI Action Plan: ${strategyPlan.action}. Reason: ${strategyPlan.reason}`);
 
+        let newNotes = previousNotes; // Default to old notes
         switch (strategyPlan.action) {
             case "ENTER_LONG":
             case "ENTER_SHORT":
-                console.log("Action handler for new position not yet implemented.");
+                newNotes = await handleNewPosition(strategyPlan, accountContext);
                 break;
+
             case "ADJUST_SL":
-                console.log("Action handler for SL adjustment not yet implemented.");
+                newNotes = await handleStopLossAdjustment(strategyPlan, accountContext);
                 break;
+
             case "EXIT_POSITION":
-                console.log("Action handler for position exit not yet implemented.");
+                newNotes = await handlePositionExit(strategyPlan, accountContext);
                 break;
+
             case "HOLD":
             default:
                 console.log("Action: Holding as per AI recommendation.");
+                newNotes = { ...previousNotes, generalObservations: `AI recommended HOLD.` };
                 break;
         }
 
-        const notes = { ...previousNotes, generalObservations: `AI recommended ${strategyPlan.action}.` };
-        await writeNotes(notes);
+        // 6. Write the updated notes file for the next cycle.
+        await writeNotes(newNotes);
 
     } catch (error) {
         console.error('FATAL ERROR in trading loop:', error.message);
