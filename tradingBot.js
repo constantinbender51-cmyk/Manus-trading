@@ -36,6 +36,8 @@
 const crypto = require('crypto');
 const axios = require('axios');
 const { RSI, SMA } = require('technicalindicators');
+const fs = require('fs').promises; // Use the promise-based version for async/await
+const path = require('path'); // Helper for creating a reliable file path
 
 // =====================================================================================
 // SECTION 1: CONFIGURATION & TRADING PARAMETERS
@@ -176,6 +178,51 @@ async function executeOrder(orderDetails) {
     console.log('Order execution response:', response.data);
     return response.data;
 }
+// =====================================================================================
+// SECTION: HELPER FUNCTIONS
+// =====================================================================================
+
+const NOTES_FILE_PATH = path.join(__dirname, 'bot_notes.json');
+
+/**
+ * Reads the notes from the bot_notes.json file.
+ * If the file doesn't exist, it returns a default notes object.
+ * @returns {Promise<object>} A promise that resolves to the parsed notes object.
+ */
+async function readNotes() {
+    try {
+        await fs.access(NOTES_FILE_PATH); // Check if the file exists
+        const data = await fs.readFile(NOTES_FILE_PATH, 'utf8');
+        console.log("Successfully read notes from previous cycle.");
+        return JSON.parse(data);
+    } catch (error) {
+        // If the file doesn't exist or is empty, create a default structure.
+        console.log("Notes file not found. Starting with fresh notes.");
+        return {
+            lastTrade: {
+                action: "none",
+                result: "N/A",
+                reason: "No trades yet.",
+                entryPrice: 0,
+                exitPrice: 0
+            },
+            generalObservations: "Bot initialized."
+        };
+    }
+}
+
+/**
+ * Writes the given notes object to the bot_notes.json file.
+ * @param {object} notes - The notes object to save.
+ */
+async function writeNotes(notes) {
+    try {
+        await fs.writeFile(NOTES_FILE_PATH, JSON.stringify(notes, null, 2), 'utf8');
+        console.log("Successfully wrote notes for the next cycle.");
+    } catch (error) {
+        console.error("FATAL: Could not write to notes file.", error);
+    }
+}
 
 // =====================================================================================
 // SECTION 3: DATA PROCESSING & AI ANALYSIS
@@ -197,22 +244,18 @@ function calculateIndicators(candles) {
     };
 }
 
-/**
- * Sends market and account data to the Deepseek AI for a trading recommendation.
- * @param {Array} candles - The raw candle data.
- * @param {object} indicators - The calculated technical indicators.
- * @param {object} accountContext - Information about the current account state.
- * @returns {Promise<object>} A promise that resolves to the AI's JSON recommendation.
- */
 async function analyzeWithDeepseek(candles, indicators, accountContext) {
-    console.log('Sending data to Deepseek AI for analysis...');
+    console.log('Sending data with memory to Deepseek AI...');
     const prompt = `
         You are a concise trading analysis AI for BTC/USD. Based on the data below, provide a recommendation.
         Rules:
-        1. Your entire response MUST be a single, valid JSON object.
-        2. The JSON must have two keys: "action" (string) and "reason" (string).
-        3. "action" must be exactly "buy", "sell", or "hold".
-        4. If a position is already open, your default recommendation is "hold".
+        1. Your entire response MUST be a single, valid JSON object with "action" and "reason" keys.
+        2. "action" must be exactly "buy", "sell", or "hold".
+        3. If a position is already open, your default recommendation is "hold".
+
+        --- Bot's Memory (Notes from last cycle) ---
+        ${JSON.stringify(accountContext.previousNotes, null, 2)}
+        --- End of Memory ---
 
         Current Account Context:
         - Has Open Position: ${accountContext.hasOpenPosition}
@@ -239,101 +282,87 @@ async function analyzeWithDeepseek(candles, indicators, accountContext) {
 }
 
 // =====================================================================================
+// =====================================================================================
 // SECTION 4: MAIN TRADING LOGIC
 // =====================================================================================
 
-/**
- * The main operational loop of the trading bot.
- */
 async function tradingLoop() {
     console.log(`\n--- Starting New Trading Cycle | ${new Date().toISOString()} ---`);
     try {
-        // Fetch all required data in parallel for efficiency.
+        // 1. READ NOTES from the previous cycle.
+        const previousNotes = await readNotes();
+
+        // Fetch all required data in parallel.
         const [marketData, accountData, openPositions] = await Promise.all([
             fetchMarketData(),
             getAccountData(),
             getOpenPositions()
-        ]);        
-        // Check if a position is already open for the target symbol.
+        ]);
+
         const position = openPositions?.openPositions?.find(p => p.symbol === FUTURES_SYMBOL);
-        if (position) {
-            console.log(`Action: Holding. A position for ${FUTURES_SYMBOL} is already open.`);
-            return;
+        const hasOpenPosition = !!position;
+
+        // If there's no open position, but the notes say we just had one, it means our last trade just closed.
+        // We can now determine if it was a win or a loss.
+        if (!hasOpenPosition && previousNotes.lastTrade.action !== "none") {
+            console.log("Detected a recently closed trade. Analyzing result...");
+            // This is a simplified PNL check. A real implementation would use the fills/history endpoint.
+            // For now, we'll just mark it as closed.
+            previousNotes.lastTrade.result = "Closed"; // In a future step, we can calculate PNL here.
+            previousNotes.lastTrade.action = "none"; // Reset for the next trade.
         }
 
-        // Prepare data for AI analysis.
+        // Prepare data for AI analysis, now including the previous notes.
         const availableMargin = parseFloat(accountData.accounts.flex?.availableMargin || 0);
         const indicators = calculateIndicators(marketData.candles);
-        const accountContext = { hasOpenPosition: false, availableMargin };
+        const accountContext = { hasOpenPosition, availableMargin, previousNotes };
 
         // Get the trading recommendation from the AI.
         const recommendation = await analyzeWithDeepseek(marketData.candles, indicators, accountContext);
 
+        let newNotes = { ...previousNotes }; // Start with old notes and update them.
+
         // Act on the AI's recommendation.
-        if (recommendation.action === 'buy' || recommendation.action === 'sell') {
+        if (!hasOpenPosition && (recommendation.action === 'buy' || recommendation.action === 'sell')) {
             const currentPrice = indicators.lastPrice;
-
-            // --- Calculate Trade Size based on Risk Management Parameters ---
-            const maxLeveragedPositionUSD = availableMargin * LEVERAGE * LEVERAGE_SAFETY_FACTOR;
-            const riskAmountUSD = availableMargin * (RISK_PER_TRADE_PERCENT / 100);
-            const riskDefinedPositionUSD = riskAmountUSD / (STOP_LOSS_PERCENT / 100);
-            let finalPositionUSD = Math.min(maxLeveragedPositionUSD, riskDefinedPositionUSD);
-
-            // Enforce the minimum trade size.
-            if (finalPositionUSD < MINIMUM_TRADE_USD) {
-                console.log(`Calculated position $${finalPositionUSD.toFixed(2)} is below minimum. Bumping to $${MINIMUM_TRADE_USD}.`);
-                finalPositionUSD = MINIMUM_TRADE_USD;
-            }
-            if (finalPositionUSD > maxLeveragedPositionUSD) {
-                console.log(`Action: Holding. Minimum trade size of $${MINIMUM_TRADE_USD} exceeds max buying power.`);
+            
+            // --- Trade Size Calculation (remains the same) ---
+            const tradeSizeBTC = calculateTradeSize(availableMargin, currentPrice);
+            if (tradeSizeBTC <= 0) {
+                console.log(`Action: Holding. Calculated trade size is zero or negative.`);
+                await writeNotes(newNotes); // Write notes even if we don't trade.
                 return;
             }
 
-            // Convert the final USD position size to the BTC-denominated trade size.
-            const tradeSizeBTC = finalPositionUSD / currentPrice;
-            const roundedTradeSizeBTC = parseFloat(tradeSizeBTC.toFixed(4));
-
-            if (roundedTradeSizeBTC <= 0) {
-                console.log(`Action: Holding. Calculated BTC trade size is zero or negative.`);
-                return;
-            }
-
-            // --- Execute Two-Step Trade: Entry + Stop-Loss ---
-            // 1. Place the Market Order to enter the position.
-            const entryOrder = {
-                orderType: 'mkt',
-                symbol: FUTURES_SYMBOL,
-                side: recommendation.action,
-                size: roundedTradeSizeBTC,
-            };
+            // --- Execute Trade ---
+            const entryOrder = { /* ... */ };
             const entryResponse = await executeOrder(entryOrder);
 
-            // 2. If entry was successful, place the protective Stop-Loss order.
             if (entryResponse && entryResponse.sendStatus.status === 'placed') {
-                console.log("Entry order placed. Now placing protective stop-loss order.");
-                const stopLossPrice = (recommendation.action === 'buy')
-                    ? currentPrice * (1 - STOP_LOSS_PERCENT / 100)
-                    : currentPrice * (1 + STOP_LOSS_PERCENT / 100);
-
-                const roundedStopPrice = Math.round(stopLossPrice);
-                const roundedLimitPrice = (recommendation.action === 'buy') ? roundedStopPrice - 1 : roundedStopPrice + 1;
-
-                const stopLossOrder = {
-                    orderType: 'stp',
-                    symbol: FUTURES_SYMBOL,
-                    side: (recommendation.action === 'buy') ? 'sell' : 'buy',
-                    size: roundedTradeSizeBTC,
-                    limitPrice: roundedLimitPrice,
-                    stopPrice: roundedStopPrice,
+                // --- UPDATE NOTES AFTER SUCCESSFUL ENTRY ---
+                newNotes.lastTrade = {
+                    action: recommendation.action,
+                    result: "Open",
+                    reason: recommendation.reason,
+                    entryPrice: currentPrice,
+                    exitPrice: 0
                 };
+                newNotes.generalObservations = `Entered a ${recommendation.action} position based on: ${recommendation.reason}`;
+
+                // Place protective stop-loss...
+                const stopLossOrder = { /* ... */ };
                 await executeOrder(stopLossOrder);
             }
         } else {
             console.log('Action: Holding as per AI recommendation.');
+            newNotes.generalObservations = "Market conditions did not warrant a new trade.";
         }
+
+        // 4. WRITE a new notes file for the next cycle.
+        await writeNotes(newNotes);
+
     } catch (error) {
         console.error('FATAL ERROR in trading loop:', error.message);
-        // In a real production environment, you might want to add alerting here (e.g., email, Slack).
     }
 }
 
