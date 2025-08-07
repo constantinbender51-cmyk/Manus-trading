@@ -283,7 +283,7 @@ function calculateIndicators(candles) {
     };
 }
 
-async async function analyzeWithDeepseek(candles, indicators, accountContext) {
+async function analyzeWithDeepseek(candles, indicators, accountContext) {
     console.log('Sending advanced context to Deepseek AI for strategic analysis...');
 
     const prompt = `
