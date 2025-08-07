@@ -343,8 +343,28 @@ console.log(openPositions);
 }
 
 // =====================================================================================
-// SECTION 5: BOT INITIALIZATION
+// SECTION 5: BOT INITIALIZATION (Robust Loop)
 // =====================================================================================
+
+/**
+ * The main operational loop of the trading bot.
+ * This version uses a robust, self-correcting loop with setTimeout.
+ */
+async function runBot() {
+    try {
+        // Execute one full trading cycle.
+        await tradingLoop();
+    } catch (error) {
+        // This catch block is a final safety net, though the one inside
+        // tradingLoop should handle most operational errors.
+        console.error('A critical, unhandled error occurred in the main runBot function:', error.message);
+    } finally {
+        // IMPORTANT: Whether the loop succeeded or failed, schedule the next run.
+        // This ensures the bot is resilient and will try again after a failure.
+        console.log(`--- Cycle complete. Next run scheduled in ${CANDLE_INTERVAL} minutes. ---`);
+        setTimeout(runBot, TRADE_INTERVAL_MS);
+    }
+}
 
 /**
  * Main function to initialize and start the bot.
@@ -362,9 +382,8 @@ function main() {
         process.exit(1); // Exit the process if configuration is incomplete.
     }
 
-    // Run the main trading loop immediately on startup, then repeat at the defined interval.
-    tradingLoop();
-    setInterval(tradingLoop, TRADE_INTERVAL_MS);
+    // Start the robust, self-correcting loop.
+    runBot();
 }
 
 // --- Start the Bot ---
