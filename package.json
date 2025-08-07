@@ -4,7 +4,7 @@
   "description": "A trading bot using Kraken and Deepseek APIs.",
   "main": "tradingBot.js",
   "scripts": {
-    "start": "node tradingBot.js",
+    "start": "exec node tradingBot.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
