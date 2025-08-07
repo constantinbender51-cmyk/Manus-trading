@@ -379,28 +379,34 @@ async function analyzeWithDeepseek(candles, indicators, accountContext) {
 async function tradingLoop() {
     console.log(`\n--- Starting New Strategic Trading Cycle | ${new Date().toISOString()} ---`);
     try {
-        // Fetch all required data in parallel, now including open orders.
+        // 1. Read notes from the previous cycle to provide memory.
+        const previousNotes = await readNotes();
+
+        // 2. Fetch all required data in parallel.
         const [marketData, accountData, openPositions, openOrders] = await Promise.all([
             fetchMarketData(),
             getAccountData(),
             getOpenPositions(),
-            getOpenOrders() // <-- Add the new function call here
+            getOpenOrders()
         ]);
 
+        // 3. Consolidate all context for the AI.
         const position = openPositions?.openPositions?.find(p => p.symbol === FUTURES_SYMBOL);
         const hasOpenPosition = !!position;
 
         // Find the currently open stop-loss order associated with our position.
         const stopLossForPosition = openOrders?.openOrders?.find(o => o.symbol === FUTURES_SYMBOL && o.orderType === 'stp');
 
-        // Prepare the full context object for the AI.
         const availableMargin = parseFloat(accountData.accounts.flex?.availableMargin || 0);
         const indicators = calculateIndicators(marketData.candles);
+        
+        // This is the complete context object, now including the bot's memory.
         const accountContext = {
             hasOpenPosition,
-            position, // Pass the full position object
-            openOrders: stopLossForPosition ? [stopLossForPosition] : [], // Pass the specific SL order
-            availableMargin
+            position,
+            openOrders: stopLossForPosition ? [stopLossForPosition] : [],
+            availableMargin,
+            previousNotes // <-- This is the corrected addition
         };
 
         // 2. Get the strategic action plan from the AI
